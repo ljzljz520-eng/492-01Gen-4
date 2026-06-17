@@ -18,7 +18,8 @@ import {
 
 const columns: { key: TaskStatus; title: string; accent: string }[] = [
   { key: "pending", title: "待指派", accent: "bg-slate-500" },
-  { key: "assigned", title: "已指派", accent: "bg-blue-500" },
+  { key: "assigned", title: "待接单", accent: "bg-blue-500" },
+  { key: "accepted", title: "已接单", accent: "bg-cyan-500" },
   { key: "arrived", title: "已到达", accent: "bg-sky-500" },
   { key: "loading", title: "装卸中", accent: "bg-indigo-500" },
   { key: "waiting", title: "异常等待", accent: "bg-warn-500" },
@@ -132,7 +133,7 @@ export default function DispatcherBoard() {
       {loading ? (
         <div className="text-center py-20 text-slate-500">加载中...</div>
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
           {columns.map((col) => (
             <div key={col.key} className="flex flex-col min-h-[400px]">
               <div className="flex items-center gap-2 px-1 mb-3">

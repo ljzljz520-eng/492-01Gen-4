@@ -42,6 +42,7 @@ export default function TaskDetailPage() {
   const timelines = [
     { label: "任务创建", time: task.createdAt, icon: Package, done: !!task.createdAt },
     { label: "已指派", time: task.assignedAt, icon: User, done: !!task.assignedAt },
+    { label: "已接单", time: task.acceptedAt, icon: CheckCircle2, done: !!task.acceptedAt },
     { label: "到达堆场", time: task.arrivedAt, icon: MapPin, done: !!task.arrivedAt },
     { label: "开始装卸", time: task.loadingStartedAt, icon: Truck, done: !!task.loadingStartedAt },
     { label: "完工", time: task.completedAt, icon: CheckCircle2, done: !!task.completedAt },

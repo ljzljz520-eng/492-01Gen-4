@@ -19,16 +19,6 @@ function toCamelCase<T>(row: Record<string, unknown>): T {
   return result as T;
 }
 
-function rowsToObjects<T>(columns: string[], values: unknown[][]): T[] {
-  return values.map((row) => {
-    const obj: Record<string, unknown> = {};
-    columns.forEach((col, i) => {
-      obj[col] = row[i];
-    });
-    return toCamelCase<T>(obj);
-  });
-}
-
 function query<T>(sql: string, params: unknown[] = []): T[] {
   if (!db) throw new Error('Database not initialized');
   const stmt = db.prepare(sql);
@@ -63,13 +53,23 @@ export async function initDatabase() {
   if (fs.existsSync(DB_FILE)) {
     const buffer = fs.readFileSync(DB_FILE);
     db = new SQL.Database(buffer);
-    console.log('[DB] Loaded existing database');
+    migrateSchema();
+    console.log('[DB] Loaded existing database with migration');
   } else {
     db = new SQL.Database();
     createTables();
     seedData();
     saveDatabase();
     console.log('[DB] Created new database with seed data');
+  }
+}
+
+function migrateSchema() {
+  try {
+    query(`SELECT accepted_at FROM task LIMIT 1`);
+  } catch {
+    run(`ALTER TABLE task ADD COLUMN accepted_at TEXT`);
+    console.log('[DB] Migrated: added accepted_at column');
   }
 }
 
@@ -106,6 +106,7 @@ function createTables() {
       driver_id INTEGER REFERENCES driver(id),
       forklift_id INTEGER REFERENCES forklift(id),
       assigned_at TEXT,
+      accepted_at TEXT,
       arrived_at TEXT,
       loading_started_at TEXT,
       waiting_minutes INTEGER DEFAULT 0,
@@ -120,7 +121,7 @@ function seedData() {
   const drivers = [
     ['张伟', 'D001', 1, 'idle'],
     ['李强', 'D002', 0, 'idle'],
-    ['王磊', 'D003', 1, 'working'],
+    ['王磊', 'D003', 1, 'idle'],
     ['刘洋', 'D004', 0, 'idle'],
     ['陈军', 'D005', 1, 'idle'],
   ];
@@ -130,7 +131,7 @@ function seedData() {
 
   const forklifts = [
     ['FL-001', 'HELI 5T', 5, 'available'],
-    ['FL-002', 'HELI 10T', 10, 'in_use'],
+    ['FL-002', 'HELI 10T', 10, 'available'],
     ['FL-003', 'LINDE 8T', 8, 'available'],
     ['FL-004', 'HELI 5T', 5, 'available'],
     ['FL-005', 'TOYOTA 15T', 15, 'maintenance'],
@@ -145,13 +146,13 @@ function seedData() {
   run(
     `INSERT INTO task (task_no, container_no, container_weight, is_hazardous, ship_schedule, yard_location, status, driver_id, forklift_id, assigned_at, created_at)
      VALUES (?, ?, ?, 0, ?, ?, 'assigned', 3, 2, ?, ?)`,
-    ['TK20260612002', 'MSC9876543', 12.0, 'MAERSK-023 / 06-13 14:00', 'B区-01-05', iso(-40), iso(-60)]
+    ['TK20260612002', 'MSC9876543', 9.0, 'MAERSK-023 / 06-13 14:00', 'B区-01-05', iso(-40), iso(-60)]
   );
 
   run(
-    `INSERT INTO task (task_no, container_no, container_weight, is_hazardous, hazardous_class, ship_schedule, yard_location, status, driver_id, forklift_id, assigned_at, arrived_at, loading_started_at, completed_at, created_at)
-     VALUES (?, ?, ?, 1, ?, ?, ?, 'completed', 1, 1, ?, ?, ?, ?, ?)`,
-    ['TK20260612003', 'CMAU4567890', 5.2, '3类易燃液体', 'EVERGREEN-108 / 06-15 10:00', 'A区-05-08', iso(-180), iso(-170), iso(-160), iso(-100), iso(-240)]
+    `INSERT INTO task (task_no, container_no, container_weight, is_hazardous, hazardous_class, ship_schedule, yard_location, status, driver_id, forklift_id, assigned_at, accepted_at, arrived_at, loading_started_at, completed_at, created_at)
+     VALUES (?, ?, ?, 1, ?, ?, ?, 'completed', 1, 1, ?, ?, ?, ?, ?, ?)`,
+    ['TK20260612003', 'CMAU4567890', 4.8, '3类易燃液体', 'EVERGREEN-108 / 06-15 10:00', 'A区-05-08', iso(-180), iso(-175), iso(-170), iso(-160), iso(-100), iso(-240)]
   );
 
   run(
@@ -161,16 +162,19 @@ function seedData() {
   );
 
   run(
-    `INSERT INTO task (task_no, container_no, container_weight, is_hazardous, ship_schedule, yard_location, status, driver_id, forklift_id, assigned_at, arrived_at, created_at)
-     VALUES (?, ?, ?, 0, ?, ?, 'arrived', 5, 3, ?, ?, ?)`,
-    ['TK20260612004', 'OOLU7788990', 6.8, 'CMA-CGM-045 / 06-13 22:00', 'C区-02-14', iso(-120), iso(-90), iso(-130)]
+    `INSERT INTO task (task_no, container_no, container_weight, is_hazardous, ship_schedule, yard_location, status, driver_id, forklift_id, assigned_at, accepted_at, arrived_at, created_at)
+     VALUES (?, ?, ?, 0, ?, ?, 'arrived', 5, 3, ?, ?, ?, ?)`,
+    ['TK20260612004', 'OOLU7788990', 6.8, 'CMA-CGM-045 / 06-13 22:00', 'C区-02-14', iso(-120), iso(-110), iso(-90), iso(-130)]
   );
 
   run(
-    `INSERT INTO task (task_no, container_no, container_weight, is_hazardous, ship_schedule, yard_location, status, driver_id, forklift_id, assigned_at, arrived_at, loading_started_at, waiting_minutes, exception_note, created_at)
-     VALUES (?, ?, ?, 0, ?, ?, 'waiting', 2, 4, ?, ?, ?, 25, '等待龙门吊就位', ?)`,
-    ['TK20260612005', 'YMLU1122334', 7.3, 'ONE-077 / 06-14 02:00', 'A区-07-03', iso(-90), iso(-70), iso(-55), iso(-100)]
+    `INSERT INTO task (task_no, container_no, container_weight, is_hazardous, ship_schedule, yard_location, status, driver_id, forklift_id, assigned_at, accepted_at, arrived_at, loading_started_at, waiting_minutes, exception_note, created_at)
+     VALUES (?, ?, ?, 0, ?, ?, 'waiting', 2, 4, ?, ?, ?, ?, 25, '等待龙门吊就位', ?)`,
+    ['TK20260612005', 'YMLU1122334', 4.5, 'ONE-077 / 06-14 02:00', 'A区-07-03', iso(-90), iso(-85), iso(-70), iso(-55), iso(-100)]
   );
+
+  run(`UPDATE driver SET status = 'working' WHERE id IN (2, 5)`);
+  run(`UPDATE forklift SET status = 'in_use' WHERE id IN (3, 4)`);
 }
 
 export function getAllDrivers(): Driver[] {
@@ -183,6 +187,10 @@ export function getDriverById(id: number): Driver | undefined {
 
 export function getAllForklifts(): Forklift[] {
   return query<Forklift>('SELECT * FROM forklift ORDER BY id');
+}
+
+export function getForkliftById(id: number): Forklift | undefined {
+  return query<Forklift>('SELECT * FROM forklift WHERE id = ?', [id])[0];
 }
 
 export function getTasks(status?: TaskStatus): Task[] {
@@ -209,7 +217,27 @@ export function generateTaskNo(): string {
   return `TK${y}${m}${day}${String(count + 1).padStart(3, '0')}`;
 }
 
+function isDriverUsedElsewhere(driverId: number, excludeTaskId?: number): boolean {
+  const rows = query<{ n: number }>(
+    `SELECT COUNT(*) as n FROM task WHERE driver_id = ? AND status NOT IN ('completed','pending') ${excludeTaskId ? `AND id != ${excludeTaskId}` : ''}`,
+    [driverId]
+  );
+  return rows[0].n > 0;
+}
+
+function isForkliftUsedElsewhere(forkliftId: number, excludeTaskId?: number): boolean {
+  const rows = query<{ n: number }>(
+    `SELECT COUNT(*) as n FROM task WHERE forklift_id = ? AND status NOT IN ('completed','pending') ${excludeTaskId ? `AND id != ${excludeTaskId}` : ''}`,
+    [forkliftId]
+  );
+  return rows[0].n > 0;
+}
+
 export function createTask(payload: CreateTaskPayload & { taskNo: string }): Task {
+  const forklift = getForkliftById(payload.forkliftId);
+  if (forklift && payload.containerWeight > forklift.maxCapacity) {
+    throw new Error(`货柜超重：${payload.containerWeight} 吨 > 叉车 ${forklift.code} 最大载重 ${forklift.maxCapacity} 吨`);
+  }
   const result = run(
     `INSERT INTO task (task_no, container_no, container_weight, is_hazardous, hazardous_class, ship_schedule, yard_location, status, driver_id, forklift_id, assigned_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, CURRENT_TIMESTAMP)`,
@@ -225,39 +253,78 @@ export function createTask(payload: CreateTaskPayload & { taskNo: string }): Tas
       payload.forkliftId,
     ]
   );
-  run(`UPDATE driver SET status = 'working' WHERE id = ?`, [payload.driverId]);
-  run(`UPDATE forklift SET status = 'in_use' WHERE id = ?`, [payload.forkliftId]);
+  if (payload.driverId) {
+    run(`UPDATE driver SET status = 'working' WHERE id = ?`, [payload.driverId]);
+  }
+  if (payload.forkliftId) {
+    run(`UPDATE forklift SET status = 'in_use' WHERE id = ?`, [payload.forkliftId]);
+  }
   return getTaskById(result.lastInsertRowid)!;
 }
 
 export function assignTask(taskId: number, driverId: number, forkliftId: number): Task {
+  const task = getTaskById(taskId);
+  if (!task) throw new Error('任务不存在');
+
+  const forklift = getForkliftById(forkliftId);
+  if (forklift && task.containerWeight > forklift.maxCapacity) {
+    throw new Error(`货柜超重：${task.containerWeight} 吨 > 叉车 ${forklift.code} 最大载重 ${forklift.maxCapacity} 吨`);
+  }
+
+  const oldDriverId = task.driverId;
+  const oldForkliftId = task.forkliftId;
+
   run(
-    `UPDATE task SET driver_id = ?, forklift_id = ?, status = 'assigned', assigned_at = CURRENT_TIMESTAMP WHERE id = ?`,
+    `UPDATE task SET driver_id = ?, forklift_id = ?, status = 'assigned', assigned_at = CURRENT_TIMESTAMP, accepted_at = NULL WHERE id = ?`,
     [driverId, forkliftId, taskId]
   );
+
+  if (oldDriverId && oldDriverId !== driverId && !isDriverUsedElsewhere(oldDriverId, taskId)) {
+    run(`UPDATE driver SET status = 'idle' WHERE id = ?`, [oldDriverId]);
+  }
+  if (oldForkliftId && oldForkliftId !== forkliftId && !isForkliftUsedElsewhere(oldForkliftId, taskId)) {
+    run(`UPDATE forklift SET status = 'available' WHERE id = ?`, [oldForkliftId]);
+  }
+
   run(`UPDATE driver SET status = 'working' WHERE id = ?`, [driverId]);
   run(`UPDATE forklift SET status = 'in_use' WHERE id = ?`, [forkliftId]);
+
   return getTaskById(taskId)!;
 }
 
 export function acceptTask(taskId: number): Task {
-  run(`UPDATE task SET status = 'assigned', assigned_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'assigned'`, [taskId]);
+  const task = getTaskById(taskId);
+  if (!task) throw new Error('任务不存在');
+  if (task.status !== 'assigned') throw new Error(`当前状态为"${task.status}"，无法接单`);
+  if (task.driverId) {
+    run(`UPDATE driver SET status = 'working' WHERE id = ?`, [task.driverId]);
+  }
+  if (task.forkliftId) {
+    run(`UPDATE forklift SET status = 'in_use' WHERE id = ?`, [task.forkliftId]);
+  }
+  run(`UPDATE task SET status = 'accepted', accepted_at = CURRENT_TIMESTAMP WHERE id = ?`, [taskId]);
   return getTaskById(taskId)!;
 }
 
 export function markTaskArrived(taskId: number): Task {
+  const task = getTaskById(taskId);
+  if (!task) throw new Error('任务不存在');
+  if (task.status !== 'accepted') throw new Error(`当前状态为"${task.status}"，需先接单后才能记录到达堆场`);
   run(`UPDATE task SET status = 'arrived', arrived_at = CURRENT_TIMESTAMP WHERE id = ?`, [taskId]);
   return getTaskById(taskId)!;
 }
 
 export function markTaskLoading(taskId: number): Task {
+  const task = getTaskById(taskId);
+  if (!task) throw new Error('任务不存在');
+  if (task.status !== 'arrived') throw new Error(`当前状态为"${task.status}"，需先记录到达堆场后才能开始装卸`);
   run(`UPDATE task SET status = 'loading', loading_started_at = CURRENT_TIMESTAMP WHERE id = ?`, [taskId]);
   return getTaskById(taskId)!;
 }
 
 export function markTaskWaiting(taskId: number, minutes: number, note: string): Task {
   run(
-    `UPDATE task SET status = 'waiting', waiting_minutes = COALESCE(waiting_minutes, 0) + ?, exception_note = ? WHERE id = ?`,
+    `UPDATE task SET status = 'waiting', waiting_minutes = COALESCE(waiting_minutes, 0) + ?, exception_note = COALESCE(exception_note, '') || CASE WHEN exception_note IS NOT NULL AND exception_note != '' THEN '；' ELSE '' END || ? WHERE id = ?`,
     [minutes, note, taskId]
   );
   return getTaskById(taskId)!;
@@ -265,25 +332,38 @@ export function markTaskWaiting(taskId: number, minutes: number, note: string): 
 
 export function completeTask(taskId: number): Task {
   const task = getTaskById(taskId);
+  if (!task) throw new Error('任务不存在');
+  if (!['loading', 'waiting'].includes(task.status)) {
+    throw new Error(`当前状态为"${task.status}"，需先开始装卸作业后才能完工`);
+  }
   run(`UPDATE task SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?`, [taskId]);
-  if (task?.driverId) run(`UPDATE driver SET status = 'idle' WHERE id = ?`, [task.driverId]);
-  if (task?.forkliftId) run(`UPDATE forklift SET status = 'available' WHERE id = ?`, [task.forkliftId]);
+  if (task.driverId && !isDriverUsedElsewhere(task.driverId, taskId)) {
+    run(`UPDATE driver SET status = 'idle' WHERE id = ?`, [task.driverId]);
+  }
+  if (task.forkliftId && !isForkliftUsedElsewhere(task.forkliftId, taskId)) {
+    run(`UPDATE forklift SET status = 'available' WHERE id = ?`, [task.forkliftId]);
+  }
   return getTaskById(taskId)!;
 }
 
 export function getUtilizationStats(date?: string): Utilization[] {
-  const dateFilter = date ? `WHERE DATE(t.completed_at) = DATE('${date}')` : `WHERE t.completed_at IS NOT NULL`;
+  const dateClause = date
+    ? `AND DATE(COALESCE(t.completed_at, t.created_at)) = DATE('${date}')`
+    : `AND COALESCE(t.completed_at, t.created_at) >= datetime('now', '-30 days')`;
+
   const sql = `
     SELECT
       f.id as forklift_id,
       f.code as forklift_code,
       COALESCE(SUM(
-        CAST((julianday(t.completed_at) - julianday(COALESCE(t.arrived_at, t.assigned_at))) * 1440 AS INTEGER)
-        - COALESCE(t.waiting_minutes, 0)
+        CASE WHEN t.id IS NOT NULL AND t.status NOT IN ('pending', 'assigned') THEN
+          CAST(MAX(0, (julianday(COALESCE(t.completed_at, CURRENT_TIMESTAMP)) - julianday(COALESCE(t.arrived_at, t.accepted_at, t.assigned_at))) * 1440) AS INTEGER)
+          - COALESCE(t.waiting_minutes, 0)
+        ELSE 0 END
       ), 0) as working_minutes,
-      COUNT(t.id) as task_count
+      SUM(CASE WHEN t.id IS NOT NULL THEN 1 ELSE 0 END) as task_count
     FROM forklift f
-    LEFT JOIN task t ON f.id = t.forklift_id ${dateFilter}
+    LEFT JOIN task t ON f.id = t.forklift_id AND t.status NOT IN ('pending') ${dateClause}
     GROUP BY f.id, f.code
     ORDER BY f.code
   `;
@@ -300,13 +380,16 @@ export function getUtilizationStats(date?: string): Utilization[] {
 export function getCongestionStats(days: number = 7): { hour: number; date: string; taskCount: number; yard: string }[] {
   const sql = `
     SELECT
-      CAST(strftime('%H', COALESCE(t.arrived_at, t.assigned_at)) AS INTEGER) as hour,
-      DATE(COALESCE(t.arrived_at, t.assigned_at)) as date,
+      CAST(strftime('%H', COALESCE(t.arrived_at, t.accepted_at, t.assigned_at)) AS INTEGER) as hour,
+      DATE(COALESCE(t.arrived_at, t.accepted_at, t.assigned_at)) as date,
       COUNT(*) as task_count,
       substr(t.yard_location, 1, instr(t.yard_location, '区') - 1) as yard
     FROM task t
     WHERE t.created_at >= datetime('now', ?)
+      AND COALESCE(t.arrived_at, t.accepted_at, t.assigned_at) IS NOT NULL
+      AND instr(t.yard_location, '区') > 1
     GROUP BY date, hour, yard
+    HAVING hour IS NOT NULL AND yard IS NOT NULL AND yard != ''
     ORDER BY date, hour
   `;
   return query<{ hour: number; date: string; taskCount: number; yard: string }>(sql, [`-${days} days`]);

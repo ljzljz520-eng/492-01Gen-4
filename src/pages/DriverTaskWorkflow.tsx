@@ -20,7 +20,8 @@ import {
 } from "lucide-react";
 
 const steps = [
-  { key: "assigned", label: "接单", icon: Send, desc: "确认接单并出发" },
+  { key: "assigned", label: "待接单", icon: Send, desc: "等待司机确认接单" },
+  { key: "accepted", label: "已接单", icon: Check, desc: "已接单，前往堆场" },
   { key: "arrived", label: "到达堆场", icon: MapPin, desc: "到达指定堆场位置" },
   { key: "loading", label: "装卸作业", icon: Truck, desc: "开始装卸作业" },
   { key: "completed", label: "完工", icon: Check, desc: "作业完成并提交" },
@@ -58,13 +59,15 @@ export default function DriverTaskWorkflow() {
         return -1;
       case "assigned":
         return 0;
-      case "arrived":
+      case "accepted":
         return 1;
+      case "arrived":
+        return 2;
       case "loading":
       case "waiting":
-        return 2;
-      case "completed":
         return 3;
+      case "completed":
+        return 4;
       default:
         return -1;
     }
@@ -83,6 +86,10 @@ export default function DriverTaskWorkflow() {
     }
   }
 
+  function handleAccept() {
+    if (!task) return;
+    doAction(() => api.acceptTask(task.id), "已成功接单，请前往堆场");
+  }
   function handleArrive() {
     if (!task) return;
     doAction(() => api.arriveTask(task.id), "已记录到达时间");
@@ -192,7 +199,7 @@ export default function DriverTaskWorkflow() {
                 width: `calc(${(Math.max(0, stepIdx) / (steps.length - 1)) * 100}% - 24px)`,
               }}
             />
-            <div className="relative grid grid-cols-4 gap-2">
+            <div className="relative grid grid-cols-5 gap-2">
               {steps.map((s, i) => {
                 const Icon = s.icon;
                 const done = i < stepIdx;
@@ -224,8 +231,9 @@ export default function DriverTaskWorkflow() {
             </div>
           </div>
 
-          <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <div className="mt-8 grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
             <TimeRow label="指派时间" time={task.assignedAt} />
+            <TimeRow label="接单时间" time={task.acceptedAt} />
             <TimeRow label="到达时间" time={task.arrivedAt} />
             <TimeRow label="开始装卸" time={task.loadingStartedAt} />
             <TimeRow label="完工时间" time={task.completedAt} />
@@ -248,6 +256,20 @@ export default function DriverTaskWorkflow() {
             <div className="mt-6 flex flex-wrap gap-3 justify-center">
               {stepIdx === 0 && (
                 <button
+                  onClick={handleAccept}
+                  disabled={submitting}
+                  className="btn-primary px-6 py-2.5"
+                >
+                  {submitting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                  我要接单
+                </button>
+              )}
+              {stepIdx === 1 && (
+                <button
                   onClick={handleArrive}
                   disabled={submitting}
                   className="btn-primary px-6 py-2.5"
@@ -260,7 +282,7 @@ export default function DriverTaskWorkflow() {
                   已到达堆场
                 </button>
               )}
-              {stepIdx === 1 && (
+              {stepIdx === 2 && (
                 <>
                   <button
                     onClick={handleStartLoading}
@@ -283,7 +305,7 @@ export default function DriverTaskWorkflow() {
                   </button>
                 </>
               )}
-              {(stepIdx === 2 || task.status === "waiting") && (
+              {(stepIdx === 3 || task.status === "waiting") && (
                 <>
                   {task.status !== "waiting" && (
                     <button

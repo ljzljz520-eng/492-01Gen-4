@@ -17,6 +17,7 @@ export interface Forklift {
 export type TaskStatus =
   | 'pending'
   | 'assigned'
+  | 'accepted'
   | 'arrived'
   | 'loading'
   | 'waiting'
@@ -38,6 +39,7 @@ export interface Task {
   driverName?: string;
   forkliftCode?: string;
   assignedAt?: string;
+  acceptedAt?: string;
   arrivedAt?: string;
   loadingStartedAt?: string;
   waitingMinutes?: number;

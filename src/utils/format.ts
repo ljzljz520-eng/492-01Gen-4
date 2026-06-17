@@ -26,7 +26,8 @@ export function formatDurationMinutes(minutes?: number): string {
 
 export const statusLabel: Record<TaskStatus, string> = {
   pending: "待指派",
-  assigned: "已指派",
+  assigned: "待接单",
+  accepted: "已接单",
   arrived: "已到达",
   loading: "装卸中",
   waiting: "异常等待",
@@ -37,6 +38,7 @@ export const statusLabel: Record<TaskStatus, string> = {
 export const statusColor: Record<TaskStatus, string> = {
   pending: "bg-slate-100 text-slate-700",
   assigned: "bg-blue-100 text-blue-700",
+  accepted: "bg-cyan-100 text-cyan-700",
   arrived: "bg-sky-100 text-sky-700",
   loading: "bg-indigo-100 text-indigo-700",
   waiting: "bg-warn-100 text-warn-600",
